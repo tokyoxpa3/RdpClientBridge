@@ -2,9 +2,13 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Text;
+using System.Collections.Generic;
 
 namespace RdpClientBridge
 {
+    // --- 介面宣告 (保持不變) ---
     [ComVisible(true)]
     [Guid("18D9D99F-65F9-46B4-A3D9-92F6786A0108")]
     [InterfaceType(ComInterfaceType.InterfaceIsDual)]
@@ -18,8 +22,11 @@ namespace RdpClientBridge
         int Port { get; set; }
         int Width { get; set; }
         int Height { get; set; }
-        int ColorDepth { get; set; }
         bool Fullscreen { get; set; }
+        void MoveToBackground();
+        void RestoreWindow();
+        void SendKeyBackground(int virtualKeyCode);
+        void SendMouseClickBackground(int x, int y);
     }
 
     [ComVisible(true)]
@@ -27,117 +34,192 @@ namespace RdpClientBridge
     [ClassInterface(ClassInterfaceType.None)]
     public class RDPConnection : Form, IRDPConnection
     {
-        private AxMSTSCLib.AxMsRdpClient2 rdpControl;
-        
+        private AxMSTSCLib.AxMsRdpClient10 rdpControl;
+
+        // --- P/Invoke ---
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
+
+        [DllImport("user32.dll")]
+        private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EnumChildWindows(IntPtr hwndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        // Windows Constants
+        private const uint WM_KEYDOWN = 0x0100;
+        private const uint WM_KEYUP = 0x0101;
+        private const uint WM_LBUTTONDOWN = 0x0201;
+        private const uint WM_LBUTTONUP = 0x0202;
+        private const uint WM_MOUSEMOVE = 0x0200;
+        private const uint WM_SETFOCUS = 0x0007; // 關鍵：強制設定焦點
+        private const uint MK_LBUTTON = 0x0001;
+        private const uint MAPVK_VK_TO_VSC = 0x00;
+
+        // Properties
         public string Server { get; set; }
         public string Username { get; set; }
         public string Password { get; set; }
-        public int Port { get; set; }
-        public new int Width { get; set; } // 'new' to hide Form.Width
-        public new int Height { get; set; } // 'new' to hide Form.Height
-        public int ColorDepth { get; set; }
-        public bool Fullscreen { get; set; }
+        public int Port { get; set; } = 3389;
+        public new int Width { get; set; } = 1024;
+        public new int Height { get; set; } = 768;
+        public bool Fullscreen { get; set; } = false;
 
         public RDPConnection()
         {
-            // Set default values
-            this.Port = 3389;
-            this.Width = 1024;
-            this.Height = 768;
-            this.ColorDepth = 16;
-            this.Fullscreen = false;
-
-            // Initialize components and events
             InitializeComponent();
             InitializeControlEvents();
         }
-        
+
         private void InitializeComponent()
         {
-            this.rdpControl = new AxMSTSCLib.AxMsRdpClient2();
-            
+            this.rdpControl = new AxMSTSCLib.AxMsRdpClient10();
             ((System.ComponentModel.ISupportInitialize)(this.rdpControl)).BeginInit();
             this.SuspendLayout();
-
-            // Setup the Form
-            this.ClientSize = new System.Drawing.Size(this.Width, this.Height);
-            this.Name = "RDPConnectionForm";
-            this.StartPosition = FormStartPosition.CenterScreen;
-
-            // Setup the RDP control
+            this.ClientSize = new Size(this.Width, this.Height);
             this.Controls.Add(this.rdpControl);
             this.rdpControl.Dock = DockStyle.Fill;
             this.rdpControl.Enabled = true;
-            this.rdpControl.Name = "rdpControl";
-            
             ((System.ComponentModel.ISupportInitialize)(this.rdpControl)).EndInit();
             this.ResumeLayout(false);
         }
 
         private void InitializeControlEvents()
         {
-            this.Load += (sender, e) => {
-                try
-                {
-                    this.rdpControl.Connect();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"RDP Connection Error on Connect: {ex.Message}", "RDP Connection Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    this.Close();
-                }
-            };
-            
-            this.FormClosing += (sender, e) => {
-                this.Disconnect();
-            };
-            
-            rdpControl.OnConnecting += (s, e) => Console.WriteLine("RDP: Connecting...");
-            rdpControl.OnConnected += (s, e) => Console.WriteLine("RDP: Connected successfully.");
-            rdpControl.OnLoginComplete += (s, e) => Console.WriteLine("RDP: Login complete.");
-            rdpControl.OnDisconnected += (s, e) => Console.WriteLine($"RDP: Disconnected. Reason: {e.discReason}");
+            this.Load += (s, e) => { try { this.rdpControl.Connect(); } catch { } };
+            this.FormClosing += (s, e) => Disconnect();
+            rdpControl.OnConnected += (s, e) => Console.WriteLine("C# Log: RDP Connected.");
         }
 
-        public void Disconnect()
-        {
-            if (this.rdpControl != null && this.rdpControl.Connected != 0)
-            {
-                this.rdpControl.Disconnect();
-            }
-        }
-
-        // This method now *applies* settings before the form is shown
         public void Connect()
         {
-            // Apply settings to the control
             this.rdpControl.Server = this.Server;
             this.rdpControl.UserName = this.Username;
             this.rdpControl.AdvancedSettings2.ClearTextPassword = this.Password;
-            this.rdpControl.ColorDepth = this.ColorDepth;
             this.rdpControl.DesktopWidth = this.Width;
             this.rdpControl.DesktopHeight = this.Height;
-            this.rdpControl.FullScreen = this.Fullscreen;
-            
-            // Advanced Settings
-            this.rdpControl.AdvancedSettings2.AcceleratorPassthrough = -1;
-            this.rdpControl.AdvancedSettings2.Compress = -1;
-            this.rdpControl.AdvancedSettings2.BitmapPersistence = -1;
-            this.rdpControl.AdvancedSettings2.CachePersistenceActive = -1;
-            
-            // Redirection Settings
-            this.rdpControl.AdvancedSettings2.RedirectDrives = false;
-            this.rdpControl.AdvancedSettings2.RedirectPrinters = false;
-            this.rdpControl.AdvancedSettings2.RedirectPorts = false;
-            this.rdpControl.AdvancedSettings2.RedirectSmartCards = false;
-            
-            if (this.Port != 3389)
+            this.rdpControl.AdvancedSettings2.RDPPort = this.Port;
+            this.rdpControl.AdvancedSettings2.SmartSizing = true;
+            this.Text = $"RDP - {this.Username}@{this.Server}";
+            this.Size = new Size(this.Width, this.Height);
+        }
+
+        public void Disconnect() { if (this.rdpControl.Connected != 0) this.rdpControl.Disconnect(); }
+
+        public void MoveToBackground()
+        {
+            this.Invoke(new MethodInvoker(() => { this.Location = new Point(-3000, -3000); }));
+        }
+
+        public void RestoreWindow()
+        {
+            this.Invoke(new MethodInvoker(() => { this.Location = new Point(100, 100); this.BringToFront(); }));
+        }
+
+        // --- 核心改進部分 ---
+
+        // 遞迴尋找特定的類別名稱
+        private IntPtr FindChildWindowByClass(IntPtr parent, string className)
+        {
+            IntPtr result = IntPtr.Zero;
+            EnumChildWindows(parent, (hwnd, param) => {
+                StringBuilder sb = new StringBuilder(256);
+                GetClassName(hwnd, sb, sb.Capacity);
+                if (sb.ToString() == className)
+                {
+                    result = hwnd;
+                    return false; // Stop enumeration
+                }
+                return true; // Continue
+            }, IntPtr.Zero);
+            return result;
+        }
+
+        private IntPtr GetInputHandlerWindow()
+        {
+            if (this.rdpControl.Handle == IntPtr.Zero) return IntPtr.Zero;
+
+            // 策略 1: 標準路徑 (Form -> UIContainer -> IHWindow)
+            // 先找 UIContainerClass
+            IntPtr uiContainer = FindChildWindowByClass(this.rdpControl.Handle, "UIContainerClass");
+            if (uiContainer != IntPtr.Zero)
             {
-                this.rdpControl.AdvancedSettings2.RDPPort = this.Port;
+                // 在 Container 裡面找 IHWindowClass
+                IntPtr ihWindow = FindChildWindowByClass(uiContainer, "IHWindowClass");
+                if (ihWindow != IntPtr.Zero)
+                {
+                    // Console.WriteLine($"Debug: Found IHWindowClass (HWND: {ihWindow})");
+                    return ihWindow;
+                }
+
+                // 如果找不到 IHWindow，有些版本直接用 UIContainer 接收輸入
+                // Console.WriteLine($"Debug: IHWindow not found, using UIContainer (HWND: {uiContainer})");
+                return uiContainer;
             }
 
-            // Update form properties
-            this.Text = $"RDP - {this.Username}@{this.Server}:{this.Port}";
-            this.Size = new Size(this.Width, this.Height);
+            // 策略 2: 如果找不到結構，回傳主控制項 (雖然通常無效，但死馬當活馬醫)
+            Console.WriteLine("Debug: Could not find internal RDP windows. Using Main Handle.");
+            return this.rdpControl.Handle;
+        }
+
+        private IntPtr MakeKeyLParam(uint scanCode, bool isDown)
+        {
+            int lParam = 1; // Repeat count
+            lParam |= ((int)scanCode << 16);
+            if (!isDown)
+            {
+                lParam |= (1 << 30); // Previous state
+                lParam |= (1 << 31); // Transition
+            }
+            return (IntPtr)lParam;
+        }
+
+        public void SendKeyBackground(int virtualKeyCode)
+        {
+            IntPtr targetHwnd = GetInputHandlerWindow();
+            if (targetHwnd == IntPtr.Zero) return;
+
+            uint scanCode = MapVirtualKey((uint)virtualKeyCode, MAPVK_VK_TO_VSC);
+
+            // Debug: 檢查 ScanCode 是否正確 (如果為 0，RDP 絕對沒反應)
+            Console.WriteLine($"C# Log: Sending VK={virtualKeyCode} -> ScanCode={scanCode} to HWND={targetHwnd}");
+
+            // 關鍵修正：發送 WM_SETFOCUS。
+            // 這是 "騙" RDP 視窗它現在是被選中的，否則它會忽略輸入。
+            SendMessage(targetHwnd, WM_SETFOCUS, IntPtr.Zero, IntPtr.Zero);
+
+            // 發送按鍵
+            PostMessage(targetHwnd, WM_KEYDOWN, (IntPtr)virtualKeyCode, MakeKeyLParam(scanCode, true));
+            // 稍微等待一點點模擬真實按鍵長度 (雖非必須，但建議)
+            Thread.Sleep(20);
+            PostMessage(targetHwnd, WM_KEYUP, (IntPtr)virtualKeyCode, MakeKeyLParam(scanCode, false));
+        }
+
+        public void SendMouseClickBackground(int x, int y)
+        {
+            IntPtr targetHwnd = GetInputHandlerWindow();
+            if (targetHwnd == IntPtr.Zero) return;
+
+            // 這裡也發送 Focus，確保滑鼠點擊被處理
+            SendMessage(targetHwnd, WM_SETFOCUS, IntPtr.Zero, IntPtr.Zero);
+
+            IntPtr lParam = (IntPtr)((y << 16) | (x & 0xFFFF));
+            PostMessage(targetHwnd, WM_LBUTTONDOWN, (IntPtr)MK_LBUTTON, lParam);
+            PostMessage(targetHwnd, WM_LBUTTONUP, IntPtr.Zero, lParam);
+
+            Console.WriteLine($"C# Log: Click ({x},{y}) sent to HWND={targetHwnd}");
         }
     }
 }

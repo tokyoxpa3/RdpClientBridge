@@ -2,7 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using AxMSTSCLib;
-using MSTSCLib;
+//using MSTSCLib;
 
 namespace RdpClientBridge
 {
@@ -54,7 +54,7 @@ namespace RdpClientBridge
                 form.Controls.Add(rdp);
                 rdp.Dock = DockStyle.Fill;
                 form.Text = $"RDP Client - {user}@{server}:{port}";
-                form.Size = new Size(width + 40, height + 60); // 稍微大一點以容納標題列和狀態列
+                form.Size = new Size(width, height); // 稍微大一點以容納標題列和狀態列
                 form.StartPosition = FormStartPosition.CenterScreen;
                 
                 // 當表單關閉時，斷開連接並釋放資源

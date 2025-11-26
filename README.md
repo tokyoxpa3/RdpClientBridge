@@ -13,6 +13,7 @@ RDP Client Bridge 是一個 .NET C# 程式庫，它封裝了 Microsoft RDP 客�
 - 提供 Python 集成支援（透過 pythonnet 或 COM 介面）
 - 支援全螢幕模式和自訂解析度
 - 內建進階 RDP 設定（快取持久性、加速器傳遞等）
+- 支援後台鍵鼠操作（無需視窗焦點即可發送鍵盤和滑鼠輸入）
 
 ## 系統需求
 
@@ -121,11 +122,31 @@ rdpConn.Fullscreen = false;
 
 // 開始連線
 rdpConn.Connect();
+
+// 將視窗移至後台（可選，但仍保持連線）
+rdpConn.MoveToBackground();
+
+// 在後台發送按鍵 (例如發送 'A' 鍵，虛擬鍵碼 65)
+rdpConn.SendKeyBackground(65);
+
+// 在後台發送滑鼠點擊 (座標 100, 200)
+rdpConn.SendMouseClickBackground(100, 200);
+
+// 恢復視窗至前景（如果需要）
+// rdpConn.RestoreWindow();
 ```
 
 ### Python 中的使用
 
 參考 `python_example/rdp_connector.py` 中的完整範例，該範例展示了如何在 Python 中安全地創建 STA 執行緒來處理 RDP 連線。
+
+專案支援後台鍵鼠操作，無需將 RDP 視窗置於前景即可發送鍵盤和滑鼠輸入。範例檔案 `python_example/rdp_connector.py` 包含了以下自動化 API：
+
+- `click(x, y)`: 在指定座標點擊滑鼠
+- `press_key(key_code_or_char)`: 發送按鍵 (支援按鍵名稱如 'ENTER', 'A', 'LWIN' 或整數鍵碼)
+- `type_text(text, interval=0.05)`: 輸入字串
+- `hide_window()`: 隱藏視窗 (背景模式)
+- `show_window()`: 顯示視窗
 
 ## API 參考
 
@@ -142,6 +163,10 @@ rdpConn.Connect();
 ### 方法
 - `Connect()`: 開始 RDP 連接
 - `Disconnect()`: 斷開 RDP 連接
+- `MoveToBackground()`: 將 RDP 視窗移至後台（視窗隱藏但仍保持連線）
+- `RestoreWindow()`: 恢復 RDP 視窗至前景
+- `SendKeyBackground(int virtualKeyCode)`: 在後台發送按鍵（無需視窗焦點）
+- `SendMouseClickBackground(int x, int y)`: 在後台發送滑鼠點擊（無需視窗焦點）
 
 ## 重要注意事項
 

@@ -89,6 +89,53 @@ rdp_conn.Fullscreen = False
 rdp_conn.Connect()
 ```
 
+## 後台鍵鼠操作範例
+
+專案支援後台鍵鼠操作，無需將 RDP 視窗置於前景即可發送鍵盤和滑鼠輸入：
+
+```python
+import clr
+import sys
+import os
+import time
+
+# 添加 RdpClientBridge.dll 的路徑
+dll_path = os.path.join('path', 'to', 'RdpClientBridge.dll')
+clr.AddReference(dll_path)
+
+# 導入命名空間
+from RdpClientBridge import RDPConnection
+
+# 創建 RDP 連線實例
+rdp_conn = RDPConnection()
+rdp_conn.Server = "127.0.0.1"
+rdp_conn.Username = "test_user"
+rdp_conn.Password = "test_password"
+rdp_conn.Port = 3389
+rdp_conn.Width = 1024
+rdp_conn.Height = 768
+rdp_conn.ColorDepth = 16
+rdp_conn.Fullscreen = False
+
+# 開始連線
+rdp_conn.Connect()
+
+# 等待連線建立
+time.sleep(3)
+
+# 將視窗移至後台（可選，但仍保持連線）
+rdp_conn.MoveToBackground()
+
+# 在後台發送按鍵 (例如發送 'A' 鍵，虛擬鍵碼 65)
+rdp_conn.SendKeyBackground(65)
+
+# 在後台發送滑鼠點擊 (座標 100, 200)
+rdp_conn.SendMouseClickBackground(100, 200)
+
+# 恢復視窗至前景（如果需要）
+# rdp_conn.RestoreWindow()
+```
+
 ## 完整的高級範例
 
 參見 `advanced_python_example.py` 文件，它包含了：
@@ -132,3 +179,7 @@ rdp_conn.Connect()
 ### 方法
 - `Connect()`: 開始 RDP 連接
 - `Disconnect()`: 斷開 RDP 連接
+- `MoveToBackground()`: 將 RDP 視窗移至後台（視窗隱藏但仍保持連線）
+- `RestoreWindow()`: 恢復 RDP 視窗至前景
+- `SendKeyBackground(int virtualKeyCode)`: 在後台發送按鍵（無需視窗焦點）
+- `SendMouseClickBackground(int x, int y)`: 在後台發送滑鼠點擊（無需視窗焦點）
