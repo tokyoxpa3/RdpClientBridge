@@ -14,6 +14,8 @@ RDP Client Bridge 是一個 .NET C# 程式庫，它封裝了 Microsoft RDP 客�
 - 支援全螢幕模式和自訂解析度
 - 內建進階 RDP 設定（快取持久性、加速器傳遞等）
 - 支援後台鍵鼠操作（無需視窗焦點即可發送鍵盤和滑鼠輸入）
+- 支援滑鼠右鍵點擊功能
+- 支援滑鼠拖曳操作（滑鼠按下、滑鼠放開、滑鼠移動）
 
 ## 系統需求
 
@@ -143,6 +145,10 @@ rdpConn.SendMouseClickBackground(100, 200);
 專案支援後台鍵鼠操作，無需將 RDP 視窗置於前景即可發送鍵盤和滑鼠輸入。範例檔案 `python_example/rdp_connector.py` 包含了以下自動化 API：
 
 - `click(x, y)`: 在指定座標點擊滑鼠
+- `right_click(x, y)`: 在指定座標點擊滑鼠右鍵
+- `mouse_down(x, y)`: 在指定座標按下滑鼠
+- `mouse_up(x, y)`: 在指定座標放開滑鼠
+- `mouse_move(x, y, is_left_down=False)`: 移動滑鼠（支援拖曳狀態）
 - `press_key(key_code_or_char)`: 發送按鍵 (支援按鍵名稱如 'ENTER', 'A', 'LWIN' 或整數鍵碼)
 - `type_text(text, interval=0.05)`: 輸入字串
 - `hide_window()`: 隱藏視窗 (背景模式)
@@ -167,6 +173,10 @@ rdpConn.SendMouseClickBackground(100, 200);
 - `RestoreWindow()`: 恢復 RDP 視窗至前景
 - `SendKeyBackground(int virtualKeyCode)`: 在後台發送按鍵（無需視窗焦點）
 - `SendMouseClickBackground(int x, int y)`: 在後台發送滑鼠點擊（無需視窗焦點）
+- `SendMouseRightClickBackground(int x, int y)`: 在後台發送滑鼠右鍵點擊（無需視窗焦點）
+- `SendMouseDownBackground(int x, int y)`: 在後台發送滑鼠按下（無需視窗焦點）
+- `SendMouseUpBackground(int x, int y)`: 在後台發送滑鼠放開（無需視窗焦點）
+- `SendMouseMoveBackground(int x, int y, bool isLeftDown)`: 在後台發送滑鼠移動（支援拖曳狀態）
 
 ## 重要注意事項
 

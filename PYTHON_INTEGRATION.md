@@ -183,3 +183,7 @@ rdp_conn.SendMouseClickBackground(100, 200)
 - `RestoreWindow()`: 恢復 RDP 視窗至前景
 - `SendKeyBackground(int virtualKeyCode)`: 在後台發送按鍵（無需視窗焦點）
 - `SendMouseClickBackground(int x, int y)`: 在後台發送滑鼠點擊（無需視窗焦點）
+- `SendMouseRightClickBackground(int x, int y)`: 在後台發送滑鼠右鍵點擊（無需視窗焦點）
+- `SendMouseDownBackground(int x, int y)`: 在後台發送滑鼠按下（無需視窗焦點）
+- `SendMouseUpBackground(int x, int y)`: 在後台發送滑鼠放開（無需視窗焦點）
+- `SendMouseMoveBackground(int x, int y, bool isLeftDown)`: 在後台發送滑鼠移動（支援拖曳狀態）
