@@ -138,7 +138,67 @@ rdp_conn.SendMouseClickBackground(100, 200)
 
 ## 完整的高級範例
 
-參見 `advanced_python_example.py` 文件，它包含了：
+參見 `python_example/multi_rdp_manager.py` 文件，它包含了：
+
+- 自動 DLL 載入功能
+- 多執行緒 RDP 連線管理
+- 錯誤處理
+- 交互式調試模式
+- 擴展的自動化 API（滑鼠拖曳、鍵盤輸入等）
+
+## 多視窗支援
+
+新的 `multi_rdp_manager.py` 檔案包含專門的 `MultiRdpManager` 類別，支援同時管理多個 RDP 視窗：
+
+```python
+from python_example.multi_rdp_manager import MultiRdpManager
+
+# 建立多連線管理器
+manager = MultiRdpManager()
+
+# 建立多個 RDP 連線
+manager.add_session('session1', 'server1.example.com', 'user1', 'password1', hide=True)
+manager.add_session('session2', 'server2.example.com', 'user2', 'password2', hide=True)
+manager.add_session('session3', 'server3.example.com', 'user3', 'password3', hide=True)
+
+# 切換控制不同的 RDP 視窗
+manager.switch_session('session1')  # 切換到第一個視窗
+current = manager.get_current()
+current.click(10, 200)             # 在第一個視窗點擊
+
+manager.switch_session('session2')  # 切換到第二個視窗
+current = manager.get_current()
+current.click(300, 400)             # 在第二個視窗點擊
+
+# 也可以直接存取特定連線
+session1 = manager.sessions['session1']
+session1.show_window()              # 顯示第一個視窗
+session2 = manager.sessions['session2']
+session2.hide_window()              # 隱藏第二個視窗
+```
+
+此外，也可以使用互動模式進行多連線管理：
+
+```bash
+# 在命令列執行
+python python_example/multi_rdp_manager.py
+
+# 在互動模式中使用指令
+[new session1 192.168.1.10 admin password]  # 建立新連線
+[use session1]                              # 切換到指定連線
+[click 100 200]                             # 在當前連線執行點擊
+[hide/show]                                 # 隱藏或顯示當前連線視窗
+[list]                                      # 列出所有連線
+```
+
+### MultiRdpManager 類別 API
+
+- `add_session(session_id, ip, user, pwd, port=3389, hide=False)`: 新增 RDP 連線
+- `switch_session(session_id)`: 切換當前控制的連線
+- `get_current()`: 取得當前連線的 RdpController 實例
+- `close_all()`: 關閉所有連線
+- `sessions`: 字典，包含所有連線的 RdpController 實例
+- `current_id`: 當前控制的連線 ID
 
 - 自動 DLL 註冊功能
 - 兩種調用方法的實現

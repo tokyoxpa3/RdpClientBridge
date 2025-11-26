@@ -140,9 +140,9 @@ rdpConn.SendMouseClickBackground(100, 200);
 
 ### Python 中的使用
 
-參考 `python_example/rdp_connector.py` 中的完整範例，該範例展示了如何在 Python 中安全地創建 STA 執行緒來處理 RDP 連線。
+參考 `python_example/multi_rdp_manager.py` 中的完整範例，該範例展示了如何在 Python 中安全地創建 STA 執行緒來處理 RDP 連線。
 
-專案支援後台鍵鼠操作，無需將 RDP 視窗置於前景即可發送鍵盤和滑鼠輸入。範例檔案 `python_example/rdp_connector.py` 包含了以下自動化 API：
+專案支援後台鍵鼠操作，無需將 RDP 視窗置於前景即可發送鍵盤和滑鼠輸入。範例檔案 `python_example/multi_rdp_manager.py` 包含了以下自動化 API：
 
 - `click(x, y)`: 在指定座標點擊滑鼠
 - `right_click(x, y)`: 在指定座標點擊滑鼠右鍵
@@ -153,6 +153,51 @@ rdpConn.SendMouseClickBackground(100, 200);
 - `type_text(text, interval=0.05)`: 輸入字串
 - `hide_window()`: 隱藏視窗 (背景模式)
 - `show_window()`: 顯示視窗
+
+#### 多視窗支援
+
+新的 `multi_rdp_manager.py` 檔案包含專門的 `MultiRdpManager` 類別，支援同時管理多個 RDP 視窗：
+
+```python
+from multi_rdp_manager import MultiRdpManager
+
+# 建立多連線管理器
+manager = MultiRdpManager()
+
+# 建立多個 RDP 連線
+manager.add_session('session1', 'server1.example.com', 'user1', 'password1', hide=True)
+manager.add_session('session2', 'server2.example.com', 'user2', 'password2', hide=True)
+manager.add_session('session3', 'server3.example.com', 'user3', 'password3', hide=True)
+
+# 切換控制不同的 RDP 視窗
+manager.switch_session('session1')  # 切換到第一個視窗
+current = manager.get_current()
+current.click(10, 200)             # 在第一個視窗點擊
+
+manager.switch_session('session2')  # 切換到第二個視窗
+current = manager.get_current()
+current.click(300, 400)             # 在第二個視窗點擊
+
+# 也可以直接存取特定連線
+session1 = manager.sessions['session1']
+session1.show_window()              # 顯示第一個視窗
+session2 = manager.sessions['session2']
+session2.hide_window()              # 隱藏第二個視窗
+```
+
+此外，也可以使用互動模式進行多連線管理：
+
+```bash
+# 在命令列執行
+python multi_rdp_manager.py
+
+# 在互動模式中使用指令
+[new session1 192.168.1.10 admin password]  # 建立新連線
+[use session1]                              # 切換到指定連線
+[click 100 200]                             # 在當前連線執行點擊
+[hide/show]                                 # 隱藏或顯示當前連線視窗
+[list]                                      # 列出所有連線
+```
 
 ## API 參考
 
@@ -198,7 +243,8 @@ RdpClientBridge/
 │   ├── RDPManager.cs           # RDP 管理器類別
 │   └── Properties/             # 專案屬性
 ├── python_example/             # Python 整合範例
-│   ├── rdp_connector.py        # Python 連接器範例
+│   ├── rdp_connector.py        # Python 連接器範例 (單一連線)
+│   ├── multi_rdp_manager.py    # Python 多連線管理器 (支援多視窗)
 │   ├── RdpClientBridge.dll     # 已編譯的組件
 │   ├── Interop.MSTSCLib.dll    # COM 互操作組件
 │   └── AxInterop.MSTSCLib.dll  # ActiveX 互操作組件
