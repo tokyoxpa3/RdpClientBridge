@@ -150,54 +150,11 @@ rdpConn.SendMouseClickBackground(100, 200);
 - `mouse_up(x, y)`: 在指定座標放開滑鼠
 - `mouse_move(x, y, is_left_down=False)`: 移動滑鼠（支援拖曳狀態）
 - `press_key(key_code_or_char)`: 發送按鍵 (支援按鍵名稱如 'ENTER', 'A', 'LWIN' 或整數鍵碼)
+- `key_down(key_code_or_char)`: 按下按鍵 (支援按鍵名稱或整數鍵碼)
+- `key_up(key_code_or_char)`: 放開按鍵 (支援按鍵名稱或整數鍵碼)
 - `type_text(text, interval=0.05)`: 輸入字串
 - `hide_window()`: 隱藏視窗 (背景模式)
 - `show_window()`: 顯示視窗
-
-#### 多視窗支援
-
-新的 `multi_rdp_manager.py` 檔案包含專門的 `MultiRdpManager` 類別，支援同時管理多個 RDP 視窗：
-
-```python
-from multi_rdp_manager import MultiRdpManager
-
-# 建立多連線管理器
-manager = MultiRdpManager()
-
-# 建立多個 RDP 連線
-manager.add_session('session1', 'server1.example.com', 'user1', 'password1', hide=True)
-manager.add_session('session2', 'server2.example.com', 'user2', 'password2', hide=True)
-manager.add_session('session3', 'server3.example.com', 'user3', 'password3', hide=True)
-
-# 切換控制不同的 RDP 視窗
-manager.switch_session('session1')  # 切換到第一個視窗
-current = manager.get_current()
-current.click(10, 200)             # 在第一個視窗點擊
-
-manager.switch_session('session2')  # 切換到第二個視窗
-current = manager.get_current()
-current.click(300, 400)             # 在第二個視窗點擊
-
-# 也可以直接存取特定連線
-session1 = manager.sessions['session1']
-session1.show_window()              # 顯示第一個視窗
-session2 = manager.sessions['session2']
-session2.hide_window()              # 隱藏第二個視窗
-```
-
-此外，也可以使用互動模式進行多連線管理：
-
-```bash
-# 在命令列執行
-python multi_rdp_manager.py
-
-# 在互動模式中使用指令
-[new session1 192.168.1.10 admin password]  # 建立新連線
-[use session1]                              # 切換到指定連線
-[click 100 200]                             # 在當前連線執行點擊
-[hide/show]                                 # 隱藏或顯示當前連線視窗
-[list]                                      # 列出所有連線
-```
 
 ## API 參考
 
@@ -217,6 +174,8 @@ python multi_rdp_manager.py
 - `MoveToBackground()`: 將 RDP 視窗移至後台（視窗隱藏但仍保持連線）
 - `RestoreWindow()`: 恢復 RDP 視窗至前景
 - `SendKeyBackground(int virtualKeyCode)`: 在後台發送按鍵（無需視窗焦點）
+- `SendKeyDown(int virtualKeyCode)`: 在後台發送按鍵按下（無需視窗焦點）
+- `SendKeyUp(int virtualKeyCode)`: 在後台發送按鍵放開（無需視窗焦點）
 - `SendMouseClickBackground(int x, int y)`: 在後台發送滑鼠點擊（無需視窗焦點）
 - `SendMouseRightClickBackground(int x, int y)`: 在後台發送滑鼠右鍵點擊（無需視窗焦點）
 - `SendMouseDownBackground(int x, int y)`: 在後台發送滑鼠按下（無需視窗焦點）
@@ -243,8 +202,7 @@ RdpClientBridge/
 │   ├── RDPManager.cs           # RDP 管理器類別
 │   └── Properties/             # 專案屬性
 ├── python_example/             # Python 整合範例
-│   ├── rdp_connector.py        # Python 連接器範例 (單一連線)
-│   ├── multi_rdp_manager.py    # Python 多連線管理器 (支援多視窗)
+│   ├── rdp_connector.py        # Python 連接器範例
 │   ├── RdpClientBridge.dll     # 已編譯的組件
 │   ├── Interop.MSTSCLib.dll    # COM 互操作組件
 │   └── AxInterop.MSTSCLib.dll  # ActiveX 互操作組件

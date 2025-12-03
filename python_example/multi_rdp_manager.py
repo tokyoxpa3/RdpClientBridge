@@ -27,6 +27,7 @@ VK = {
 }
 
 class RdpController:
+    # ... (__init__, _load_references, _sta_thread_func, connect, close 保持不變) ...
     def __init__(self, dll_path=None):
         """ 初始化 RDP 控制器 """
         if dll_path is None:
@@ -37,6 +38,10 @@ class RdpController:
             if not os.path.exists(dll_path):
                  dll_path = os.path.join(base_dir, 'RdpClientBridge', 'bin', 'Release', 'RdpClientBridge.dll')
         
+        if not os.path.exists(dll_path):
+            # 最後嘗試直接在腳本目錄找
+             dll_path = os.path.join(base_dir, 'libs', 'RdpClientBridge.dll')
+
         if not os.path.exists(dll_path):
             # 最後嘗試直接在腳本目錄找
              dll_path = os.path.join(base_dir, 'RdpClientBridge.dll')
@@ -68,7 +73,7 @@ class RdpController:
         self._Application = Application
         self.assembly = System.Reflection.Assembly.Load("RdpClientBridge")
         self.RDPConnectionType = self.assembly.GetType("RdpClientBridge.RDPConnection")
-
+        
     def _sta_thread_func(self, server, username, password, port, width, height):
         try:
             self.rdp_instance = self._System.Activator.CreateInstance(self.RDPConnectionType)
@@ -85,7 +90,7 @@ class RdpController:
         finally:
             self.is_running = False
             self.rdp_instance = None
-
+            
     def connect(self, server, username, password, port=3389, width=1024, height=768, background=False):
         if self.is_running: return
         self.is_running = True
@@ -109,21 +114,24 @@ class RdpController:
     def close(self):
         if self.rdp_instance:
             try:
-                # 必須在 UI Thread 關閉，這裡用 Invoke 或簡單的 Application.Exit
-                # 這裡簡單標記，實際關閉依賴 FormClosing
                 pass 
             except: pass
         self.is_running = False
 
-    # --- 操作 API ---
+    def hide_window(self):
+        if self.rdp_instance: self.rdp_instance.MoveToBackground()
+
+    def show_window(self):
+        if self.rdp_instance: self.rdp_instance.RestoreWindow()
+
     def click(self, x, y):
         if self.rdp_instance: self.rdp_instance.SendMouseClickBackground(int(x), int(y))
     
     def right_click(self, x, y):
         if self.rdp_instance: self.rdp_instance.SendMouseRightClickBackground(int(x), int(y))
 
-    def press_key(self, key_code_or_char):
-        if not self.rdp_instance: return
+    # --- 按鍵輔助 ---
+    def _get_vk(self, key_code_or_char):
         vk_code = 0
         if isinstance(key_code_or_char, int):
             vk_code = key_code_or_char
@@ -132,7 +140,12 @@ class RdpController:
             if key in VK: vk_code = VK[key]
             elif key.isdigit(): vk_code = int(key)
             elif len(key) == 1: vk_code = ord(key)
-        if vk_code > 0: self.rdp_instance.SendKeyBackground(vk_code)
+        return vk_code
+
+    def press_key(self, key_code_or_char):
+        if not self.rdp_instance: return
+        vk = self._get_vk(key_code_or_char)
+        if vk > 0: self.rdp_instance.SendKeyBackground(vk)
 
     def type_text(self, text, interval=0.05):
         for char in text:
@@ -140,13 +153,18 @@ class RdpController:
             else: self.press_key(char)
             time.sleep(interval)
 
-    def hide_window(self):
-        if self.rdp_instance: self.rdp_instance.MoveToBackground()
+    # --- [新增] Key Down / Key Up ---
+    def key_down(self, key_code_or_char):
+        if not self.rdp_instance: return
+        vk = self._get_vk(key_code_or_char)
+        if vk > 0: self.rdp_instance.SendKeyDown(vk)
+    
+    def key_up(self, key_code_or_char):
+        if not self.rdp_instance: return
+        vk = self._get_vk(key_code_or_char)
+        if vk > 0: self.rdp_instance.SendKeyUp(vk)
 
-    def show_window(self):
-        if self.rdp_instance: self.rdp_instance.RestoreWindow()
-
-    # --- 原子操作 ---
+    # --- 滑鼠原子操作 ---
     def mouse_down(self, x, y):
         if self.rdp_instance: self.rdp_instance.SendMouseDownBackground(int(x), int(y))
     def mouse_up(self, x, y):
@@ -154,13 +172,11 @@ class RdpController:
     def mouse_move(self, x, y, is_drag=False):
         if self.rdp_instance: self.rdp_instance.SendMouseMoveBackground(int(x), int(y), is_drag)
 
-    # --- 拖曳算法 (簡化版) ---
     def drag_drop(self, x1, y1, x2, y2):
         self.mouse_move(x1, y1)
         time.sleep(0.1)
         self.mouse_down(x1, y1)
         time.sleep(0.1)
-        # 簡單插值移動
         steps = 20
         dx = (x2 - x1) / steps
         dy = (y2 - y1) / steps
@@ -171,9 +187,8 @@ class RdpController:
         time.sleep(0.1)
         self.mouse_up(x2, y2)
 
-# ==========================================
-#  多連線管理器 (Multi-Session Manager)
-# ==========================================
+# ... (MultiRdpManager 類別保持不變) ...
+
 class MultiRdpManager:
     def __init__(self):
         self.sessions = {} # { 'id': RdpController }
@@ -217,9 +232,6 @@ class MultiRdpManager:
             bot.close()
         self.sessions.clear()
 
-# ==========================================
-#  多工互動模式 (Interactive Mode)
-# ==========================================
 def interactive_mode():
     print("=== Multi-RDP Manager CLI ===")
     manager = MultiRdpManager()
@@ -236,13 +248,13 @@ def interactive_mode():
     print("  hide / show                 - 隱藏/顯示 當前視窗")
     print("  click <x> <y>               - 點擊 (當前視窗)")
     print("  type <text>                 - 輸入文字 (當前視窗)")
-    print("  drag <x1> <y1> <x2> <y2>    - 拖曳")
+    print("  key <k>                     - 按一下按鍵")
+    print("  hold <k> <sec>              - 長按按鍵 (例如: hold W 3)")
     print("  exit                        - 結束所有連線並退出")
     print("-----------------------------")
 
     while True:
         try:
-            # 提示當前控制的 Session ID
             prompt_id = manager.current_id if manager.current_id else "NoSession"
             cmd_line = input(f"[{prompt_id}]> ").strip()
             if not cmd_line: continue
@@ -250,7 +262,6 @@ def interactive_mode():
             parts = cmd_line.split()
             cmd = parts[0].lower()
 
-            # --- 全域管理指令 ---
             if cmd == 'exit' or cmd == 'q':
                 manager.close_all()
                 break
@@ -267,19 +278,15 @@ def interactive_mode():
                 else: manager.switch_session(parts[1])
 
             elif cmd == 'new':
-                # new session1 192.168.1.10 admin 1234
                 if len(parts) < 2:
                     print("Usage: new <id> [ip] [user] [pwd]")
                     continue
-                
                 sid = parts[1]
                 ip = parts[2] if len(parts) > 2 else def_ip
                 user = parts[3] if len(parts) > 3 else def_user
                 pwd = parts[4] if len(parts) > 4 else def_pwd
-                
                 manager.add_session(sid, ip, user, pwd)
 
-            # --- 針對當前 Session 的指令 ---
             else:
                 bot = manager.get_current()
                 if not bot or not bot.is_running:
@@ -298,6 +305,20 @@ def interactive_mode():
                     if len(parts) > 1: bot.type_text(" ".join(parts[1:]))
                 elif cmd == 'key':
                     if len(parts) == 2: bot.press_key(parts[1])
+                
+                # [新增] 處理 hold 指令
+                elif cmd == 'hold':
+                    if len(parts) == 3:
+                        key = parts[1]
+                        duration = float(parts[2])
+                        print(f"Holding {key} for {duration}s...")
+                        bot.key_down(key)
+                        time.sleep(duration)
+                        bot.key_up(key)
+                        print("Released.")
+                    else:
+                        print("Usage: hold <key> <seconds>")
+                
                 elif cmd == 'drag':
                     if len(parts) == 5: bot.drag_drop(int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]))
                 elif cmd == 'wait':

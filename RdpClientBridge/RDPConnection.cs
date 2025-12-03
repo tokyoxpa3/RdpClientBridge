@@ -4,11 +4,9 @@ using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Text;
-using System.Collections.Generic;
 
 namespace RdpClientBridge
 {
-    // --- 介面宣告 (保持不變) ---
     [ComVisible(true)]
     [Guid("18D9D99F-65F9-46B4-A3D9-92F6786A0108")]
     [InterfaceType(ComInterfaceType.InterfaceIsDual)]
@@ -25,8 +23,19 @@ namespace RdpClientBridge
         bool Fullscreen { get; set; }
         void MoveToBackground();
         void RestoreWindow();
+
+        // --- 鍵盤控制 ---
         void SendKeyBackground(int virtualKeyCode);
+        // [新增] 獨立的按下與放開
+        void SendKeyDown(int virtualKeyCode);
+        void SendKeyUp(int virtualKeyCode);
+
+        // --- 滑鼠控制 ---
         void SendMouseClickBackground(int x, int y);
+        void SendMouseRightClickBackground(int x, int y);
+        void SendMouseDownBackground(int x, int y);
+        void SendMouseUpBackground(int x, int y);
+        void SendMouseMoveBackground(int x, int y, bool isLeftDown);
     }
 
     [ComVisible(true)]
@@ -36,7 +45,7 @@ namespace RdpClientBridge
     {
         private AxMSTSCLib.AxMsRdpClient10 rdpControl;
 
-        // --- P/Invoke ---
+        // --- P/Invoke (保持不變) ---
         [DllImport("user32.dll", SetLastError = true)]
         private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
 
@@ -63,12 +72,15 @@ namespace RdpClientBridge
         private const uint WM_KEYUP = 0x0101;
         private const uint WM_LBUTTONDOWN = 0x0201;
         private const uint WM_LBUTTONUP = 0x0202;
+        private const uint WM_RBUTTONDOWN = 0x0204;
+        private const uint WM_RBUTTONUP = 0x0205;
         private const uint WM_MOUSEMOVE = 0x0200;
-        private const uint WM_SETFOCUS = 0x0007; // 關鍵：強制設定焦點
+        private const uint WM_SETFOCUS = 0x0007;
         private const uint MK_LBUTTON = 0x0001;
+        private const uint MK_RBUTTON = 0x0002;
         private const uint MAPVK_VK_TO_VSC = 0x00;
 
-        // Properties
+        // Properties (保持不變)
         public string Server { get; set; }
         public string Username { get; set; }
         public string Password { get; set; }
@@ -128,9 +140,8 @@ namespace RdpClientBridge
             this.Invoke(new MethodInvoker(() => { this.Location = new Point(100, 100); this.BringToFront(); }));
         }
 
-        // --- 核心改進部分 ---
+        // --- 核心邏輯 (完全保留您寫好的) ---
 
-        // 遞迴尋找特定的類別名稱
         private IntPtr FindChildWindowByClass(IntPtr parent, string className)
         {
             IntPtr result = IntPtr.Zero;
@@ -140,9 +151,9 @@ namespace RdpClientBridge
                 if (sb.ToString() == className)
                 {
                     result = hwnd;
-                    return false; // Stop enumeration
+                    return false;
                 }
-                return true; // Continue
+                return true;
             }, IntPtr.Zero);
             return result;
         }
@@ -151,75 +162,115 @@ namespace RdpClientBridge
         {
             if (this.rdpControl.Handle == IntPtr.Zero) return IntPtr.Zero;
 
-            // 策略 1: 標準路徑 (Form -> UIContainer -> IHWindow)
-            // 先找 UIContainerClass
+            // 策略 1
             IntPtr uiContainer = FindChildWindowByClass(this.rdpControl.Handle, "UIContainerClass");
             if (uiContainer != IntPtr.Zero)
             {
-                // 在 Container 裡面找 IHWindowClass
                 IntPtr ihWindow = FindChildWindowByClass(uiContainer, "IHWindowClass");
-                if (ihWindow != IntPtr.Zero)
-                {
-                    // Console.WriteLine($"Debug: Found IHWindowClass (HWND: {ihWindow})");
-                    return ihWindow;
-                }
-
-                // 如果找不到 IHWindow，有些版本直接用 UIContainer 接收輸入
-                // Console.WriteLine($"Debug: IHWindow not found, using UIContainer (HWND: {uiContainer})");
+                if (ihWindow != IntPtr.Zero) return ihWindow;
                 return uiContainer;
             }
-
-            // 策略 2: 如果找不到結構，回傳主控制項 (雖然通常無效，但死馬當活馬醫)
-            Console.WriteLine("Debug: Could not find internal RDP windows. Using Main Handle.");
+            // 策略 2
             return this.rdpControl.Handle;
         }
 
         private IntPtr MakeKeyLParam(uint scanCode, bool isDown)
         {
-            int lParam = 1; // Repeat count
+            int lParam = 1;
             lParam |= ((int)scanCode << 16);
             if (!isDown)
             {
-                lParam |= (1 << 30); // Previous state
-                lParam |= (1 << 31); // Transition
+                lParam |= (1 << 30);
+                lParam |= (1 << 31);
             }
             return (IntPtr)lParam;
         }
 
-        public void SendKeyBackground(int virtualKeyCode)
+        // --- [修改部分] 拆分 KeyDown 和 KeyUp ---
+
+        public void SendKeyDown(int virtualKeyCode)
         {
             IntPtr targetHwnd = GetInputHandlerWindow();
             if (targetHwnd == IntPtr.Zero) return;
 
             uint scanCode = MapVirtualKey((uint)virtualKeyCode, MAPVK_VK_TO_VSC);
 
-            // Debug: 檢查 ScanCode 是否正確 (如果為 0，RDP 絕對沒反應)
-            Console.WriteLine($"C# Log: Sending VK={virtualKeyCode} -> ScanCode={scanCode} to HWND={targetHwnd}");
-
-            // 關鍵修正：發送 WM_SETFOCUS。
-            // 這是 "騙" RDP 視窗它現在是被選中的，否則它會忽略輸入。
+            // 保持您的邏輯：先搶焦點
             SendMessage(targetHwnd, WM_SETFOCUS, IntPtr.Zero, IntPtr.Zero);
 
-            // 發送按鍵
+            // 發送 KeyDown
+            // 注意 MakeKeyLParam 的第二個參數是 true (isDown)
             PostMessage(targetHwnd, WM_KEYDOWN, (IntPtr)virtualKeyCode, MakeKeyLParam(scanCode, true));
-            // 稍微等待一點點模擬真實按鍵長度 (雖非必須，但建議)
-            Thread.Sleep(20);
-            PostMessage(targetHwnd, WM_KEYUP, (IntPtr)virtualKeyCode, MakeKeyLParam(scanCode, false));
         }
 
-        public void SendMouseClickBackground(int x, int y)
+        public void SendKeyUp(int virtualKeyCode)
         {
             IntPtr targetHwnd = GetInputHandlerWindow();
             if (targetHwnd == IntPtr.Zero) return;
 
-            // 這裡也發送 Focus，確保滑鼠點擊被處理
+            uint scanCode = MapVirtualKey((uint)virtualKeyCode, MAPVK_VK_TO_VSC);
+
+            // 保持您的邏輯：先搶焦點 (確保 KeyUp 也被接收)
             SendMessage(targetHwnd, WM_SETFOCUS, IntPtr.Zero, IntPtr.Zero);
 
+            // 發送 KeyUp
+            // 注意 MakeKeyLParam 的第二個參數是 false (!isDown)
+            PostMessage(targetHwnd, WM_KEYUP, (IntPtr)virtualKeyCode, MakeKeyLParam(scanCode, false));
+        }
+
+        // 為了相容性，原本的 SendKeyBackground 直接呼叫上面兩個方法
+        public void SendKeyBackground(int virtualKeyCode)
+        {
+            SendKeyDown(virtualKeyCode);
+            Thread.Sleep(20);
+            SendKeyUp(virtualKeyCode);
+        }
+
+        // --- 滑鼠部分保持不變 ---
+        public void SendMouseClickBackground(int x, int y)
+        {
+            IntPtr targetHwnd = GetInputHandlerWindow();
+            if (targetHwnd == IntPtr.Zero) return;
+            SendMessage(targetHwnd, WM_SETFOCUS, IntPtr.Zero, IntPtr.Zero);
             IntPtr lParam = (IntPtr)((y << 16) | (x & 0xFFFF));
             PostMessage(targetHwnd, WM_LBUTTONDOWN, (IntPtr)MK_LBUTTON, lParam);
             PostMessage(targetHwnd, WM_LBUTTONUP, IntPtr.Zero, lParam);
+        }
 
-            Console.WriteLine($"C# Log: Click ({x},{y}) sent to HWND={targetHwnd}");
+        public void SendMouseRightClickBackground(int x, int y)
+        {
+            IntPtr targetHwnd = GetInputHandlerWindow();
+            if (targetHwnd == IntPtr.Zero) return;
+            SendMessage(targetHwnd, WM_SETFOCUS, IntPtr.Zero, IntPtr.Zero);
+            IntPtr lParam = (IntPtr)((y << 16) | (x & 0xFFFF));
+            PostMessage(targetHwnd, WM_RBUTTONDOWN, (IntPtr)MK_RBUTTON, lParam);
+            PostMessage(targetHwnd, WM_RBUTTONUP, IntPtr.Zero, lParam);
+        }
+
+        public void SendMouseDownBackground(int x, int y)
+        {
+            IntPtr targetHwnd = GetInputHandlerWindow();
+            if (targetHwnd == IntPtr.Zero) return;
+            SendMessage(targetHwnd, WM_SETFOCUS, IntPtr.Zero, IntPtr.Zero);
+            IntPtr lParam = (IntPtr)((y << 16) | (x & 0xFFFF));
+            PostMessage(targetHwnd, WM_LBUTTONDOWN, (IntPtr)MK_LBUTTON, lParam);
+        }
+
+        public void SendMouseUpBackground(int x, int y)
+        {
+            IntPtr targetHwnd = GetInputHandlerWindow();
+            if (targetHwnd == IntPtr.Zero) return;
+            IntPtr lParam = (IntPtr)((y << 16) | (x & 0xFFFF));
+            PostMessage(targetHwnd, WM_LBUTTONUP, IntPtr.Zero, lParam);
+        }
+
+        public void SendMouseMoveBackground(int x, int y, bool isLeftDown)
+        {
+            IntPtr targetHwnd = GetInputHandlerWindow();
+            if (targetHwnd == IntPtr.Zero) return;
+            IntPtr lParam = (IntPtr)((y << 16) | (x & 0xFFFF));
+            IntPtr wParam = isLeftDown ? (IntPtr)MK_LBUTTON : IntPtr.Zero;
+            PostMessage(targetHwnd, WM_MOUSEMOVE, wParam, lParam);
         }
     }
 }
